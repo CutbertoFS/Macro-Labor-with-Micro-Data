@@ -33,7 +33,7 @@ include("Tauchen_1986_Grid.jl")
     # Employment/Unemployment
     ne::Int64       = 2
     e_grid::Vector{Float64} = [1, 2]
-    δ::Matrix{Float64} = [0.95 0.05; 0.05 0.95]     # Employment/Unemployment transition matrix
+    δ::Matrix{Float64} = [0.95 0.05; 0.50 0.50]     # Employment/Unemployment transition matrix
 
     # Income process
     ρ::Float64      = 0.97                          # Correlation in the persistent component of income
@@ -318,15 +318,19 @@ function simulate_model(param, results, other_param, S::Int64)
     @unpack_Results results
     @unpack_OtherPrimitives other_param
 
-    # Distribution over the initial permanent component
-    ζ0_grid, T_ζ0   = tauchen_hussey(nζ, 0.0, 0.15)        # Discretization of Initial Permanent shocks  [ζ]    
-    Initial_dist    = Categorical(T_ζ0[1,:])
+    # [1] Distribution over initial Employment Status
+    Initial_dist_E      = Categorical([0.909,0.091])
+    Employment_dist     = Categorical(δ[1,:])
+    Unemployment_dist   = Categorical(δ[2,:])
 
-    # Distribution over the transitory component (use that it isn't persistent, so won't vary over time)
-    Transitory_dist = Categorical(T_ϵ)
+    # [2] Distribution over the initial permanent component
+    ζ0_grid, T_ζ0       = tauchen(nζ, 0.0, 0.15)                  # Discretization of Initial Permanent shocks  [ζ]    
+    Initial_dist_ζ      = Categorical(T_ζ0[1,:])
+    Perm_distsE         = [Categorical(T_ζE[i, :]) for i in 1:nζ] # State-contingent distributions over the permanent components
+    Perm_distsU         = [Categorical(T_ζU[i, :]) for i in 1:nζ] # State-contingent distributions over the permanent components
 
-    # State-contingent distributions over the permanent components
-    Perm_dists      = [Categorical(T_ζ[i, :]) for i in 1:nζ]
+    # [3] Distribution over the transitory component (use that it isn't persistent, so won't vary over time)
+    Transitory_dist     = Categorical(T_ϵ)
 
     # Outputs
     Assets          = zeros(S,T)                                                # Saving by Age
@@ -334,109 +338,179 @@ function simulate_model(param, results, other_param, S::Int64)
     Persistent      = zeros(S,T)
     Transitory      = zeros(S,T)
     Income          = zeros(S,T) 
+    Employment      = zeros(S,T) 
+
 
     for s = 1:S
+        employment_index    = rand(Initial_dist_E)
+        persistent_index    = rand(Initial_dist_ζ)
         transitory_index    = rand(Transitory_dist)
-        persistent_index    = rand(Initial_dist)
-
         a_index             = 1                                                 # Start with 0 assets
 
+        # Employment Status
+        Employment[s,1]     = employment_index
+
         # Asset policy 
-        Assets[s,1]         = a_policy[1, a_index, persistent_index, transitory_index]
+        Assets[s,1]         = a_policy[1, a_index, persistent_index, transitory_index, employment_index]
 
         # Persistent and Transitory components 
         Persistent[s,1]     = ζ_grid[persistent_index]
         Transitory[s,1]     = ϵ_grid[transitory_index]
 
         # Compute income
-        Income[s,1]         = exp(κ[1] + Persistent[s,1] + Transitory[s,1]) 
+        if employment_index == 1
+            Income[s,1]     = exp(κ[1] + Persistent[s,1] + Transitory[s,1]) 
+        else 
+            Income[s,1]     = 0.50 * exp(κ[1])
+        end
 
         # Consumption policy 
         Consumption[s,1]    = a_grid[a_index]*(1+r) + Income[s,1] - Assets[s,1]
 
         for t = 2:T 
-            persistent_index    = rand(Perm_dists[persistent_index])           # Draw the new permanent component based upon the old one. 
-            transitory_index    = rand(Transitory_dist)                        # Draw the transitory component 
-            a_index             = findfirst(x -> x == Assets[s, t-1], a_grid)  # Find the index of the previous choice of ap 
+
+            # Given Employment Status in t-1 we draw the Employment Status in t
+            if employment_index == 1
+                employment_index = rand(Employment_dist)
+            else 
+                employment_index = rand(Unemployment_dist)
+            end
+            Employment[s,t]      = employment_index
+
+            # Given the Employment Status in t, we draw the new persistent and transitory shocks
+            if employment_index == 1
+                persistent_index = rand(Perm_distsE[persistent_index])          # Draw the new permanent component based upon the old one. 
+            else 
+                persistent_index = rand(Perm_distsU[persistent_index])           
+            end
+            transitory_index     = rand(Transitory_dist)                        # Draw the transitory component 
+            a_index              = findfirst(x -> x == Assets[s, t-1], a_grid)  # Find the index of the previous choice of ap 
 
             # Outputs 
-            Assets[s,t]         = a_policy[t, a_index, persistent_index, transitory_index]
             Persistent[s,t]     = ζ_grid[persistent_index]
             Transitory[s,t]     = ϵ_grid[transitory_index]
+            Assets[s,t]         = a_policy[t, a_index, persistent_index, transitory_index, employment_index]
+
             if t < TR
-                Income[s,t]     = exp(κ[t] + Persistent[s,t] + Transitory[s,t])
+                if employment_index == 1
+                    Income[s,t] = exp(κ[t] + Persistent[s,t] + Transitory[s,t])
+                else 
+                    Income[s,t] = 0.50 * exp(κ[t])
+                end
             else
-                Income[s,t]     = 0.50 * exp(κ[TR-1])
+                    Income[s,t] = 0.50 * exp(κ[TR-1])
             end
+
             Consumption[s,t]    = a_grid[a_index] * (1+r) + Income[s,t] - Assets[s,t]
         end 
     end 
 
-    return Assets, Consumption, Persistent, Transitory, Income
+    return Assets, Consumption, Persistent, Transitory, Income, Employment
 end
 
-function True_insurance(Transitory::Matrix{Float64}, Persistent::Matrix{Float64}, Consumption::Matrix{Float64}, ρ::Float64)
-    S = size(Consumption, 1)
-    T = size(Consumption, 2)
 
-    log_consumption     = log.(Consumption)
+function True_insurance(Transitory::Matrix{Float64}, Persistent::Matrix{Float64}, Consumption::Matrix{Float64}, Employment::Matrix{Float64}, ρ::Float64, TR::Int64)
+    S = size(Consumption, 1)
+
+    log_consumption     = log.(Consumption)[:,1:TR-1]
+    Employment_Status   = Employment[:,2:TR-1]
     consumption_growth  = diff(log_consumption, dims = 2)
 
-    a = zeros(S)
-    b = zeros(S)
-    for s = 1:S
-        a[s] = cov(consumption_growth[s,1:T-1], Transitory[s,2:T])
-        b[s] = var(Transitory[s,2:T])
-    end 
+    # Initialize values
+    covs_cϵ     = 0
+    var_ϵ       = 0
+    covs_cζE    = 0
+    var_ζE      = 0
+    covs_cζU    = 0
+    var_ζU      = 0
 
-    α_ϵ = 1 - sum(a) / sum(b)
+    # Vectors 
+    ζ = Persistent[:,2:TR-1] .- ρ .* Persistent[:,1:TR-2]
+    ϵ = Transitory[:,2:TR-1]
+    Vector_Employment   = vec(Employment_Status)
+    Vector_ζ            = vec(ζ) 
+    Vector_Δc           = vec(consumption_growth)
+    Vector_ϵ            = vec(ϵ) 
 
-    ζ =  Persistent[:,2:T] .- ρ .* Persistent[:,1:T-1]
-    c = zeros(S)
-    d = zeros(S)
-    for s = 1:S
-        c[s] = cov(consumption_growth[s,1:T-1], ζ[s,:])
-        d[s] = var(ζ[s,:])
-    end 
+    # Conditional Vectors
+    Vector_ζ_E  = Vector_ζ[Vector_Employment .== 1.0]
+    Vector_ϵ_E  = Vector_ϵ[Vector_Employment .== 1.0]
+    Vector_ζ_U  = Vector_ζ[Vector_Employment .== 2.0]
+    Vector_Δc_E = Vector_Δc[Vector_Employment .== 1.0]
+    Vector_Δc_U = Vector_Δc[Vector_Employment .== 2.0]
+    
+    # Insurance Coefficient: Transitory
+    covs_cϵ = cov(Vector_Δc_E, Vector_ϵ_E)
+    var_ϵ   = var(Vector_ϵ_E)
+    α_ϵ     = 1 - covs_cϵ / var_ϵ
 
-    α_ζ = 1- sum(c) / sum(d)
-    return α_ϵ,α_ζ
+    # Insurance Coefficient: Employment Persistent 
+    covs_cζE = cov(Vector_Δc_E, Vector_ζ_E)
+    var_ζE   = var(Vector_ζ_E)
+    α_ζE     = 1- covs_cζE / var_ζE
+
+    # Insurance Coefficient: Unemployment Persistent 
+    covs_cζU = cov(Vector_Δc_U, Vector_ζ_U)
+    var_ζU   = var(Vector_ζ_U)
+    α_ζU     = 1- covs_cζU / var_ζU
+
+    return α_ϵ, α_ζE, α_ζU
 end
 
-function True_insurance_by_age(Transitory::Matrix{Float64}, Persistent::Matrix{Float64}, Consumption::Matrix{Float64}, ρ::Float64)
-    S, T                = size(Consumption)
-    log_consumption     = log.(Consumption)
-    consumption_growth  = diff(log_consumption, dims = 2)               # Size S x (T-1)
+function True_insurance_by_age(Transitory::Matrix{Float64}, Persistent::Matrix{Float64}, Consumption::Matrix{Float64}, Employment::Matrix{Float64}, ρ::Float64, TR::Int64)
+    S = size(Consumption, 1)
+
+    log_consumption     = log.(Consumption)[:,1:TR-1]
+    Employment_Status   = Employment[:,2:TR-1]
+    consumption_growth  = diff(log_consumption, dims = 2)
 
     # Initialize vectors to hold age-specific coefficients
-    α_ϵ     = zeros(T - 1)
-    α_ζ     = zeros(T - 1)
-    covs_cϵ = zeros(T - 1)
-    var_ϵ   = zeros(T - 1)
-    covs_cζ = zeros(T - 1)
-    var_ζ   = zeros(T - 1)
+    α_ϵ         = zeros(TR-2)
+    α_ζE        = zeros(TR-2)
+    α_ζU        = zeros(TR-2)
+    covs_cϵ     = Float64[]
+    var_ϵ       = Float64[]
+    covs_cζE    = Float64[]
+    var_ζE      = Float64[]
+    covs_cζU    = Float64[]
+    var_ζU      = Float64[]
 
-    # Transitory innovation
-    ϵ = Transitory[:,2:T]
+    Vector_ζ_E  = Float64[]
+    Vector_ϵ_E  = Float64[]
+    Vector_ζ_U  = Float64[]
+    Vector_Δc_E = Float64[]
+    Vector_Δc_U = Float64[]
 
-    # Transitory insurance by age
-    for t = 2:T
-        covs_cϵ  = cov(consumption_growth[:,t-1], ϵ[:,t-1])     # Size S x T-1 and S x T-1
-        var_ϵ    = var(ϵ[:,t-1])
-        α_ϵ[t-1] = 1 - covs_cϵ / var_ϵ
+    # Vectors 
+    ζ  = Persistent[:,2:TR-1] .- ρ .* Persistent[:,1:TR-2]
+    ϵ  = Transitory[:,2:TR-1]
+    Δc = consumption_growth
+
+    # Transitory and Persistent insurance by age
+    for t = 1:TR-2
+
+        # Conditional Vectors
+        Vector_ζ_E  = ζ[:,t][Employment_Status[:,t] .== 1.0]
+        Vector_ϵ_E  = ϵ[:,t][Employment_Status[:,t] .== 1.0]
+        Vector_ζ_U  = ζ[:,t][Employment_Status[:,t] .== 2.0]
+        Vector_Δc_E = Δc[:,t][Employment_Status[:,t] .== 1.0]
+        Vector_Δc_U = Δc[:,t][Employment_Status[:,t] .== 2.0]
+        
+        covs_cϵ     = cov(Vector_Δc_E, Vector_ϵ_E)     # Size S x T-1 and S x T-1
+        var_ϵ       = var(Vector_ϵ_E)
+        α_ϵ[t]      = 1 - covs_cϵ / var_ϵ
+
+        covs_cζE    = cov(Vector_Δc_E, Vector_ζ_E)
+        var_ζE      = var(Vector_ζ_E)
+        α_ζE[t]     = 1 - covs_cζE / var_ζE
+
+        covs_cζU    = cov(Vector_Δc_U, Vector_ζ_U)
+        var_ζU      = var(Vector_ζ_U)
+        α_ζU[t]     = 1 - covs_cζU / var_ζU
+
     end
 
-    # Persistent innovation: ζₛₜ = Zₛₜ − ρ * Zₛₜ₋₁
-    ζ = Persistent[:,2:T] .- ρ .* Persistent[:,1:T-1]
-
-    # Persistent insurance by age
-    for t = 2:T
-        covs_cζ  = cov(consumption_growth[:,t-1], ζ[:,t-1])
-        var_ζ    = var(ζ[:,t-1])
-        α_ζ[t-1] = 1 - covs_cζ / var_ζ
-    end
-
-    return α_ϵ, α_ζ, covs_cϵ, var_ϵ, covs_cζ, var_ζ
+    return α_ϵ, α_ζE, α_ζU
 end
 
 #= ################################################################################################## 
@@ -450,7 +524,7 @@ plot(a_grid/1000, V[indices[1], :, 11, 6, 1], label = "Age = $(age[1])")
 for (t, idx) in zip(age[2:end], indices[2:end])
     plot!(a_grid/1000, V[idx, :, 11, 6, 1], label = "Age = $t")
 end
-title!("")
+title!("Employed Value function")
 xlabel!("Assets a (\$1000)")
 ylabel!("Value function")
 plot!(legend=:bottomright)
@@ -462,7 +536,7 @@ plot(a_grid/1000, a_policy[indices[1], :, 11, 6, 1]/1000, label = "Age = $(age[1
 for (t, idx) in zip(age[2:end], indices[2:end])
     plot!(a_grid/1000, a_policy[idx, :, 11, 6, 1]/1000, label = "Age = $t")
 end
-title!("")
+title!("Employed Asset Policy Function")
 xlabel!("Assets a (\$1000)")
 ylabel!("Assets a' (\$1000)")
 plot!(legend=:bottomright)
@@ -474,7 +548,7 @@ plot(a_grid/1000, c_policy[indices[1], :, 11, 6, 1]/1000, label = "Age = $(age[1
 for (t, idx) in zip(age[2:end], indices[2:end])
     plot!(a_grid/1000, c_policy[idx, :, 11, 6, 1]/1000, label = "Age = $t")
 end
-title!("")
+title!("Employed Consumption Policy Function")
 xlabel!("Assets a (\$1000)")
 ylabel!("Consumption c (\$1000)")
 plot!(legend=:bottomright)
@@ -487,9 +561,9 @@ age_grid_short = collect(Int, range(25, 59, length=35))
 age_grid_full  = collect(Int, range(25, 94, length=70)) 
 
 S        = 50000
-Assets, Consumption, Persistent, Transitory, Income     = simulate_model(param, results, other_param, S)
-α_ϵ, α_ζ                                                = True_insurance(Transitory, Persistent, Consumption, ρ)
-Vector_α_ϵ, Vector_α_ζ, covs_cϵ, var_ϵ, covs_cζ, var_ζ  = True_insurance_by_age(Transitory, Persistent, Consumption, ρ)
+Assets, Consumption, Persistent, Transitory, Income, Employment = simulate_model(param, results, other_param, S)
+α_ϵ, α_ζE, α_ζU                                                 = True_insurance(Transitory, Persistent, Consumption, Employment, ρ, TR)
+Vector_α_ϵ, Vector_α_ζE, Vector_α_ζU                            = True_insurance_by_age(Transitory, Persistent, Consumption, Employment, ρ, TR)
 
 #####################################################################################################
 
@@ -546,7 +620,7 @@ histogram(vec(Assets)/1000,
     linecolor  = :black,    # Optional: border of each bar
     normalize  = :probability,
     size       = (400, 500))
-savefig("CFS_Project/Figures/Project_Image_02.png") 
+savefig("CFS_Project/Figures/Project_Image_BHRS_02.png") 
 
 # Compute mean over S
 mean_Labor_income = vec(mean(Income, dims=1))/1000
@@ -563,18 +637,20 @@ label = "Wealth" , xlabel = "Age")
 plot!(
     legend = :topright,
     xlims = (25, 90),
-    ylims = (0, 400),
+    ylims = (0, 750),
     xticks = 25:5:90,
-    yticks = 0:50:400,
+    yticks = 0:50:750,
     xtickfont  = font(9),
     ytickfont  = font(9),
     guidefont  = font(11),
     legendfont = font(7),
     size       = (400, 500))     
-savefig("CFS_Project/Figures/Project_Image_01.png") 
+savefig("CFS_Project/Figures/Project_Image_BHRS_01.png") 
+
+#####################################################################################################
 
 # Age profiles of insurance coefficients: Transitory shocks
-plot(age_grid_short[2:TR-1], Vector_α_ϵ[1:TR-2],
+plot(age_grid_short[2:TR-1], Vector_α_ϵ,
      label      = "Model TRUE",
      lw         = 2,                  
      color      = :black)
@@ -588,13 +664,17 @@ plot!(legend = :bottomright,
       legendfont = font(7),
       titlefont  = font(12), 
       size       = (400, 500))     
-savefig("CFS_Project/Figures/Project_Image_03.png") 
+savefig("CFS_Project/Figures/Project_Image_BHRS_03.png") 
 
 # Age profiles of insurance coefficients: Permanent shocks
-plot(age_grid_short[2:TR-1], Vector_α_ζ[1:TR-2],
-     label      = "Model TRUE",
+plot(age_grid_short[2:TR-1], Vector_α_ζE,
+     label      = "Model TRUE: Employed",
      lw         = 2,                  
      color      = :black)
+# plot!(age_grid_short[2:TR-1], Vector_α_ζU,
+#      label      = "Model TRUE: Unemployed",
+#      lw         = 2,                  
+#      color      = :red)
 title!(L"\mathsf{Insurance\ Coefficients:\ Permanent\ Shocks}")
 xlabel!("Age")
 ylabel!(L"\mathsf{Insurance\ Coefficient}\ \phi^{\eta}")
@@ -605,4 +685,4 @@ plot!(legend = :topleft,
       legendfont = font(7),
       titlefont  = font(12), 
       size       = (400, 500)) 
-savefig("CFS_Project/Figures/Project_Image_04.png") 
+savefig("CFS_Project/Figures/Project_Image_BHRS_04.png") 

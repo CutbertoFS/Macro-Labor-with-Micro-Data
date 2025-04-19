@@ -316,32 +316,37 @@ function simulate_model(param, results, other_param, S::Int64)
     return Assets, Consumption, Persistent, Transitory, Income
 end
 
-function True_insurance(Transitory::Matrix{Float64}, Persistent::Matrix{Float64}, Consumption::Matrix{Float64}, ρ::Float64)
+function True_insurance(Transitory::Matrix{Float64}, Persistent::Matrix{Float64}, Consumption::Matrix{Float64}, ρ::Float64, TR::Int64)
     S = size(Consumption, 1)
-    T = size(Consumption, 2)
 
-    log_consumption     = log.(Consumption)
+    log_consumption     = log.(Consumption)[:,1:TR-1]
     consumption_growth  = diff(log_consumption, dims = 2)
 
-    a = zeros(S)
-    b = zeros(S)
-    for s = 1:S
-        a[s] = cov(consumption_growth[s,1:T-1], Transitory[s,2:T])
-        b[s] = var(Transitory[s,2:T])
-    end 
+    # Initialize values
+    covs_cϵ = 0
+    var_ϵ   = 0
+    covs_cζ = 0
+    var_ζ   = 0
 
-    α_ϵ = 1 - sum(a) / sum(b)
+    # Vectors 
+    ζ = Persistent[:,2:TR-1] .- ρ .* Persistent[:,1:TR-2]
+    ϵ = Transitory[:,2:TR-1]
 
-    ζ =  Persistent[:,2:T] .- ρ .* Persistent[:,1:T-1]
-    c = zeros(S)
-    d = zeros(S)
-    for s = 1:S
-        c[s] = cov(consumption_growth[s,1:T-1], ζ[s,:])
-        d[s] = var(ζ[s,:])
-    end 
+    Vector_ζ  = vec(ζ) 
+    Vector_Δc = vec(consumption_growth)
+    Vector_ϵ  = vec(ϵ) 
+    
+    # Insurance Coefficient: Transitory
+    covs_cϵ = cov(Vector_Δc, Vector_ϵ)
+    var_ϵ   = var(Vector_ϵ)
+    α_ϵ     = 1 - covs_cϵ / var_ϵ
 
-    α_ζ = 1- sum(c) / sum(d)
-    return α_ϵ,α_ζ
+    # Insurance Coefficient: Persistent
+    covs_cζ = cov(Vector_Δc, Vector_ζ)
+    var_ζ   = var(Vector_ζ)
+    α_ζ     = 1- covs_cζ / var_ζ
+
+    return α_ϵ, α_ζ
 end
 
 function True_insurance_by_age(Transitory::Matrix{Float64}, Persistent::Matrix{Float64}, Consumption::Matrix{Float64}, ρ::Float64)
@@ -377,7 +382,7 @@ function True_insurance_by_age(Transitory::Matrix{Float64}, Persistent::Matrix{F
         α_ζ[t-1] = 1 - covs_cζ / var_ζ
     end
 
-    return α_ϵ, α_ζ, covs_cϵ, var_ϵ, covs_cζ, var_ζ
+    return α_ϵ, α_ζ
 end
 
 #= ################################################################################################## 
@@ -428,9 +433,9 @@ age_grid_short = collect(Int, range(25, 59, length=35))
 age_grid_full  = collect(Int, range(25, 94, length=70)) 
 
 S        = 50000
-Assets, Consumption, Persistent, Transitory, Income     = simulate_model(param, results, other_param, S)
-α_ϵ, α_ζ                                                = True_insurance(Transitory, Persistent, Consumption, ρ)
-Vector_α_ϵ, Vector_α_ζ, covs_cϵ, var_ϵ, covs_cζ, var_ζ  = True_insurance_by_age(Transitory, Persistent, Consumption, ρ)
+Assets, Consumption, Persistent, Transitory, Income = simulate_model(param, results, other_param, S)
+α_ϵ, α_ζ                                            = True_insurance(Transitory, Persistent, Consumption, ρ, TR)
+Vector_α_ϵ, Vector_α_ζ                              = True_insurance_by_age(Transitory, Persistent, Consumption, ρ)
 
 #####################################################################################################
 
@@ -513,6 +518,8 @@ plot!(
     legendfont = font(7),
     size       = (400, 500))     
 savefig("CFS_Project/Figures/Project_Image_01.png") 
+
+#####################################################################################################
 
 # Age profiles of insurance coefficients: Transitory shocks
 plot(age_grid_short[2:TR-1], Vector_α_ϵ[1:TR-2],
