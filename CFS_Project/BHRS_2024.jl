@@ -3,14 +3,14 @@
     Econ 810: Spring 2025 Advanced Macroeconomics 
     Final Project: Unemployment risk in a Life-cycle Bewely economy
 
-    Last Edit:  April 17, 2025
+    Last Edit:  April 19, 2025
     Authors:    Cutberto Frias Sarraf
 
 =# ##################################################################################################
 
 using Parameters, Plots, Random, LinearAlgebra, Statistics, LaTeXStrings, Distributions
 
-include("Tauchen_Hussey_1991.jl")
+include("Tauchen_1986_Grid.jl")
 
 #= ################################################################################################## 
     Parameters
@@ -30,13 +30,22 @@ include("Tauchen_Hussey_1991.jl")
     na::Int64       = 5000                          # Grid points for assets
     a_grid::Vector{Float64} = exp.(collect(range(log(a_min), length = na, stop = log(a_max))))   
 
-    # Income process
-    ρ::Float64      = 0.97                          # Correlation in the persistent component of income 
-    nζ::Int64       = 21                            # Grid points for the permanent component
-    σ_ζ::Float64    = sqrt(0.01)                    # Standard deviation of the permanent shock
+    # Employment/Unemployment
+    ne::Int64       = 2
+    e_grid::Vector{Float64} = [1, 2]
+    δ::Matrix{Float64} = [0.95 0.05; 0.05 0.95]     # Employment/Unemployment transition matrix
 
+    # Income process
+    ρ::Float64      = 0.97                          # Correlation in the persistent component of income
+
+    nζ::Int64       = 21                            # Grid points for the permanent component
+    σ_ζE::Float64   = sqrt(0.08)                    # Standard deviation of the permanent shock in Employment
+    σ_ζU::Float64   = sqrt(0.33)                    # Standard deviation of the permanent shock in Unemployment
+    B_N::Float64    = -0.18                         # Drift of persistent component while Unemployed
+    
     nϵ::Int64       = 11                            # Grid points for the transitory component
-    σ_ϵ::Float64    = sqrt(0.05)                    # Standard deviation of the transitory shock
+    σ_ϵ::Float64    = sqrt(0.04)                    # Standard deviation of the transitory shock
+
 
     κ::Vector{Float64} = [                          # Deterministic age profile for log-income
     10.00571682417030, 10.06468173213630, 10.14963371320800, 10.18916005760660, 10.25289993933830,
@@ -52,15 +61,16 @@ end
 
 # Initialize value function and policy functions
 @with_kw mutable struct Results
-    V::Array{Float64,4}
-    a_policy::Array{Float64,4}
-    a_policy_index::Array{Int64,4}
-    c_policy::Array{Float64,4}
+    V::Array{Float64,5}
+    a_policy::Array{Float64,5}
+    a_policy_index::Array{Int64,5}
+    c_policy::Array{Float64,5}
 end
 
 @with_kw struct OtherPrimitives
     ζ_grid::Vector{Float64}
-    T_ζ::Matrix{Float64}
+    T_ζE::Matrix{Float64}
+    T_ζU::Matrix{Float64}
     ϵ_grid::Vector{Float64}
     T_ϵ::Vector{Float64}
 end
@@ -70,16 +80,17 @@ function Initialize_Model()
     param = Primitives()
     @unpack_Primitives param
 
-    V                   = zeros(T + 1, na, nζ, nϵ)          # Value function
-    a_policy            = zeros(T, na, nζ, nϵ)              # Savings function
-    a_policy_index      = zeros(T, na, nζ, nϵ)
-    c_policy            = zeros(T, na, nζ, nϵ)              # Consumption function
+    V                   = zeros(T + 1, na, nζ, nϵ, ne)          # Value function
+    a_policy            = zeros(T, na, nζ, nϵ, ne)              # Savings function
+    a_policy_index      = zeros(T, na, nζ, nϵ, ne)
+    c_policy            = zeros(T, na, nζ, nϵ, ne)              # Consumption function
 
-    ζ_grid, T_ζ         = tauchen_hussey(nζ, ρ  , σ_ζ)      # Discretization of Permanent shocks  [ζ]
-    ϵ_grid, T_ϵ         = tauchen_hussey(nϵ, 0.0, σ_ϵ)      # Discretization of Transitory shocks [ϵ]
+    ζ_grid, T_ζE        = tauchen(nζ, ρ, σ_ζE)                  # Discretization of Permanent shocks: Employment   [ζE]
+    ζ_grid, T_ζU        = tauchen(nζ, ρ, σ_ζU, grid = ζ_grid)   # Discretization of Permanent shocks: Unemployment [ζU]
+    ϵ_grid, T_ϵ         = tauchen(nϵ, 0.0, σ_ϵ)                 # Discretization of Transitory shocks [ϵ]
     T_ϵ                 = T_ϵ[1,:]
     
-    other_param         = OtherPrimitives(ζ_grid, T_ζ, ϵ_grid, T_ϵ)
+    other_param         = OtherPrimitives(ζ_grid, T_ζE, T_ζU, ϵ_grid, T_ϵ)
     results             = Results(V, a_policy, a_policy_index, c_policy)
 
     return param, results, other_param
@@ -135,7 +146,7 @@ function Solve_Problem(param::Primitives, results::Results, other_param::OtherPr
                     continue
                 end
 
-                EV  = V[j+1, ap_index, 1, 1]            # Use any index, e.g., 1 and 1
+                EV  = V[j+1, ap_index, 1, 1, 1]            # Use any index, e.g., 1, 1 and 1
                 val = Flow_Utility(c, param) + β * EV
 
                 if val > candidate_max
@@ -152,11 +163,13 @@ function Solve_Problem(param::Primitives, results::Results, other_param::OtherPr
         # Copy results across all ζ_index and ϵ_index 
         for ζ_index in 1:nζ                                         # State: Permanent shock ζ 
             for ϵ_index in 1:nϵ                                     # State: Transitory shock ϵ
-                @inbounds for a_index in 1:na                       # Control: Assets a'
-                    V[j, a_index, ζ_index, ϵ_index]                 = temp_V[a_index]
-                    c_policy[j, a_index, ζ_index, ϵ_index]          = temp_c_policy[a_index]
-                    a_policy[j, a_index, ζ_index, ϵ_index]          = temp_a_policy[a_index]
-                    a_policy_index[j, a_index, ζ_index, ϵ_index]    = temp_a_policy_index[a_index]
+                for e_index in 1:ne                                 # State: Employment Status e
+                    @inbounds for a_index in 1:na                   # Control: Assets a'
+                        V[j, a_index, ζ_index, ϵ_index, e_index]                 = temp_V[a_index]
+                        c_policy[j, a_index, ζ_index, ϵ_index, e_index]          = temp_c_policy[a_index]
+                        a_policy[j, a_index, ζ_index, ϵ_index, e_index]          = temp_a_policy[a_index]
+                        a_policy_index[j, a_index, ζ_index, ϵ_index, e_index]    = temp_a_policy_index[a_index]
+                    end
                 end
             end
         end
@@ -168,17 +181,19 @@ function Solve_Problem(param::Primitives, results::Results, other_param::OtherPr
     for j in TR-1:-1:1
         println("Age is ", 24+j)
         κ_j = κ[j]
-    
-    #= --------------------------------- STATE VARIABLES ----------------------------------------- =#
-        # Precompute transition-weighted expected values over ϵ
-        Tϵ_weighted_V = zeros(na, nζ)
+
+        Tϵ_weighted_VE = zeros(na, nζ)
+        Tϵ_weighted_VU = zeros(na, nζ)
         for ap_index in 1:na
             for ζp_index in 1:nζ
-                Tϵ_weighted_V[ap_index, ζp_index] = dot(T_ϵ, V[j+1, ap_index, ζp_index, :])
+                Tϵ_weighted_VE[ap_index, ζp_index] = dot(T_ϵ, V[j+1, ap_index, ζp_index, :, 1])
+                Tϵ_weighted_VU[ap_index, ζp_index] = dot(T_ϵ, V[j+1, ap_index, ζp_index, :, 2])
             end
         end
     
-        Threads.@threads for ζ_index in 1:nζ                   # State: Permanent shock ζ 
+    #= --------------------------------- STATE VARIABLES ----------------------------------------- =#
+        # State: Employment 
+        Threads.@threads for ζ_index in 1:nζ                    # State: Permanent shock ζ 
             ζ = ζ_grid[ζ_index]
                 
             for ϵ_index in 1:nϵ                                 # State: Transitory shock ϵ
@@ -201,20 +216,64 @@ function Solve_Problem(param::Primitives, results::Results, other_param::OtherPr
                         end
     
                         # Compute expected value from precomputed terms
-                        EV = dot(T_ζ[ζ_index, :], Tϵ_weighted_V[ap_index, :])
-                        val = Flow_Utility(c, param) + β * EV   # Utility Value
+                        EVEmployment   = δ[1,1] * dot(T_ζE[ζ_index, :], Tϵ_weighted_VE[ap_index, :])
+                        EVUnemployment = δ[1,2] * dot(T_ζU[ζ_index, :], Tϵ_weighted_VU[ap_index, :])
+
+                        val = Flow_Utility(c, param) + β * (EVEmployment + EVUnemployment) # Utility Value
     
                         if val > candidate_max                  # Check for max
-                            candidate_max                                    = val
-                            a_policy[j, a_index, ζ_index, ϵ_index]           = ap
-                            c_policy[j, a_index, ζ_index, ϵ_index]           = c
-                            a_policy_index[j, a_index, ζ_index, ϵ_index]     = ap_index
-                            V[j, a_index, ζ_index, ϵ_index]                  = val
-                            start_index                                      = ap_index
+                            candidate_max                                       = val
+                            a_policy[j, a_index, ζ_index, ϵ_index, 1]           = ap
+                            c_policy[j, a_index, ζ_index, ϵ_index, 1]           = c
+                            a_policy_index[j, a_index, ζ_index, ϵ_index, 1]     = ap_index
+                            V[j, a_index, ζ_index, ϵ_index, 1]                  = val
+                            start_index                                         = ap_index
                         else
                             break  # Early stopping due to concavity
-                        end                     
-                    end 
+                        end  
+                    end                   
+                end 
+            end 
+        end
+
+        #= --------------------------------- STATE VARIABLES ----------------------------------------- =#
+        # State: Unemployment 
+        Threads.@threads for ζ_index in 1:nζ                    # State: Permanent shock ζ                 
+            for ϵ_index in 1:nϵ                                 # State: Transitory shock ϵ
+                Y = 0.50 * exp(κ_j)                             # Income in levels 
+    
+                start_index = 1                                 # Use that a'(a) is a weakly increasing function. 
+                for a_index in 1:na                             # State: Assets a
+                    a = a_grid[a_index]
+                    X = Y + (1 + r) * a
+    
+                    candidate_max = -Inf
+        #= --------------------------------- DECISION VARIABLES -------------------------------------- =#
+                    for ap_index in start_index:na              # Control: Assets a'
+                        ap = a_grid[ap_index]
+                        c  = X - ap                             # Consumption
+        #= --------------------------------- GRID SEARCH --------------------------------------------- =#
+                        if c <= 0                               # Feasibility check
+                            continue
+                        end
+
+                        # Compute expected value from precomputed terms
+                        EVEmployment   = δ[2,1] * dot(T_ζE[ζ_index, :], Tϵ_weighted_VE[ap_index, :])
+                        EVUnemployment = δ[2,2] * dot(T_ζU[ζ_index, :], Tϵ_weighted_VU[ap_index, :])
+
+                        val = Flow_Utility(c, param) + β * (EVEmployment + EVUnemployment) # Utility Value
+
+                        if val > candidate_max                  # Check for max
+                            candidate_max                                       = val
+                            a_policy[j, a_index, ζ_index, ϵ_index, 2]           = ap
+                            c_policy[j, a_index, ζ_index, ϵ_index, 2]           = c
+                            a_policy_index[j, a_index, ζ_index, ϵ_index, 2]     = ap_index
+                            V[j, a_index, ζ_index, ϵ_index, 2]                  = val
+                            start_index                                         = ap_index
+                        else
+                            break  # Early stopping due to concavity
+                        end          
+                    end          
                 end 
             end 
         end
@@ -384,12 +443,12 @@ end
     Plots: Policy Functions
 =# ##################################################################################################
 
-# Value Policy Function: Assets
+# Employed Value Policy Function: Assets
 age       = [25, 35, 45, 55, 65, 75, 85, 95]
 indices   = [ 1, 11, 21, 31, 41, 51, 61, 70]
-plot(a_grid/1000, V[indices[1], :, 11, 6], label = "Age = $(age[1])")
+plot(a_grid/1000, V[indices[1], :, 11, 6, 1], label = "Age = $(age[1])")
 for (t, idx) in zip(age[2:end], indices[2:end])
-    plot!(a_grid/1000, V[idx, :, 11, 6], label = "Age = $t")
+    plot!(a_grid/1000, V[idx, :, 11, 6, 1], label = "Age = $t")
 end
 title!("")
 xlabel!("Assets a (\$1000)")
@@ -399,9 +458,9 @@ plot!(legend=:bottomright)
 # Savings Policy Function: Assets
 age       = [25, 35, 45, 55, 65, 75, 85, 95]
 indices   = [ 1, 11, 21, 31, 41, 51, 61, 70]
-plot(a_grid/1000, a_policy[indices[1], :, 11, 6]/1000, label = "Age = $(age[1])")
+plot(a_grid/1000, a_policy[indices[1], :, 11, 6, 1]/1000, label = "Age = $(age[1])")
 for (t, idx) in zip(age[2:end], indices[2:end])
-    plot!(a_grid/1000, a_policy[idx, :, 11, 6]/1000, label = "Age = $t")
+    plot!(a_grid/1000, a_policy[idx, :, 11, 6, 1]/1000, label = "Age = $t")
 end
 title!("")
 xlabel!("Assets a (\$1000)")
@@ -411,9 +470,9 @@ plot!(legend=:bottomright)
 # Consumption Policy Function: Assets
 age       = [25, 35, 45, 55, 65, 75, 85]
 indices   = [ 1, 11, 21, 31, 41, 51, 61]
-plot(a_grid/1000, c_policy[indices[1], :, 11, 6]/1000, label = "Age = $(age[1])")
+plot(a_grid/1000, c_policy[indices[1], :, 11, 6, 1]/1000, label = "Age = $(age[1])")
 for (t, idx) in zip(age[2:end], indices[2:end])
-    plot!(a_grid/1000, c_policy[idx, :, 11, 6]/1000, label = "Age = $t")
+    plot!(a_grid/1000, c_policy[idx, :, 11, 6, 1]/1000, label = "Age = $t")
 end
 title!("")
 xlabel!("Assets a (\$1000)")
