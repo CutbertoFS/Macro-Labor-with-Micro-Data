@@ -10,7 +10,8 @@
 
 using Parameters, Plots, Random, LinearAlgebra, Statistics, LaTeXStrings, Distributions
 
-include("Tauchen_Hussey_1991.jl")
+# include("Tauchen_Hussey_1991.jl")
+include("Tauchen_1986_Grid.jl")
 
 #= ################################################################################################## 
     Parameters
@@ -36,7 +37,7 @@ include("Tauchen_Hussey_1991.jl")
     σ_ζ::Float64    = sqrt(0.01)                    # Standard deviation of the permanent shock
 
     nϵ::Int64       = 11                            # Grid points for the transitory component
-    σ_ϵ::Float64    = sqrt(0.05)                    # Standard deviation of the transitory shock
+    σ_ϵ::Float64    = sqrt(0.04) # sqrt(0.05)                    # Standard deviation of the transitory shock
 
     κ::Vector{Float64} = [                          # Deterministic age profile for log-income
     10.00571682417030, 10.06468173213630, 10.14963371320800, 10.18916005760660, 10.25289993933830,
@@ -75,8 +76,8 @@ function Initialize_Model()
     a_policy_index      = zeros(T, na, nζ, nϵ)
     c_policy            = zeros(T, na, nζ, nϵ)              # Consumption function
 
-    ζ_grid, T_ζ         = tauchen_hussey(nζ, ρ  , σ_ζ)      # Discretization of Permanent shocks  [ζ]
-    ϵ_grid, T_ϵ         = tauchen_hussey(nϵ, 0.0, σ_ϵ)      # Discretization of Transitory shocks [ϵ]
+    ζ_grid, T_ζ         = tauchen(nζ, ρ  , σ_ζ)      # Discretization of Permanent shocks  [ζ]
+    ϵ_grid, T_ϵ         = tauchen(nϵ, 0.0, σ_ϵ)      # Discretization of Transitory shocks [ϵ]
     T_ϵ                 = T_ϵ[1,:]
     
     other_param         = OtherPrimitives(ζ_grid, T_ζ, ϵ_grid, T_ϵ)
@@ -260,7 +261,7 @@ function simulate_model(param, results, other_param, S::Int64)
     @unpack_OtherPrimitives other_param
 
     # Distribution over the initial permanent component
-    ζ0_grid, T_ζ0   = tauchen_hussey(nζ, 0.0, 0.15)        # Discretization of Initial Permanent shocks  [ζ]    
+    ζ0_grid, T_ζ0   = tauchen(nζ, 0.0, 0.15)        # Discretization of Initial Permanent shocks  [ζ]    
     Initial_dist    = Categorical(T_ζ0[1,:])
 
     # Distribution over the transitory component (use that it isn't persistent, so won't vary over time)
@@ -497,7 +498,7 @@ savefig("CFS_Project/Figures/Project_Image_02.png")
 # Compute mean over S
 mean_Labor_income = vec(mean(Income, dims=1))/1000
 mean_Consumption  = vec(mean(Consumption,  dims=1))/1000
-mean_Wealth       = vec(mean(Assets,  dims=1))/1000
+mean_Wealth       = vcat(0.0, vec(mean(Assets,  dims=1))[1:end-1]/1000)
 
 # Figure 3A: Income, Consumption and Wealth 
 plot(age_grid_full, mean_Consumption, title = "Dynamics over the Life Cycles", ylabel = "(\$1000)", 
@@ -508,16 +509,16 @@ plot!(age_grid_full, mean_Wealth, title = "Dynamics over the Life Cycles", ylabe
 label = "Wealth" , xlabel = "Age")
 plot!(
     legend = :topright,
-    xlims = (25, 90),
-    ylims = (0, 400),
-    xticks = 25:5:90,
-    yticks = 0:50:400,
+    xlims = (25, 94),
+    ylims = (0, 500),
+    xticks = 25:5:94,
+    yticks = 0:50:500,
     xtickfont  = font(9),
     ytickfont  = font(9),
     guidefont  = font(11),
     legendfont = font(7),
     size       = (400, 500))     
-savefig("CFS_Project/Figures/Project_Image_01.png") 
+savefig("CFS_Project/Figures_PPT/KV_Additional_Image_01.png") 
 
 #####################################################################################################
 
@@ -536,14 +537,14 @@ plot!(legend = :bottomright,
       legendfont = font(7),
       titlefont  = font(12), 
       size       = (400, 500))     
-savefig("CFS_Project/Figures/Project_Image_03.png") 
+savefig("CFS_Project/Figures/KV_Transitory_Image_03.png") 
 
 # Age profiles of insurance coefficients: Permanent shocks
 plot(age_grid_short[2:TR-1], Vector_α_ζ[1:TR-2],
      label      = "Model TRUE",
      lw         = 2,                  
      color      = :black)
-title!(L"\mathsf{Insurance\ Coefficients:\ Permanent\ Shocks}")
+title!(L"\mathsf{Insurance\ Coefficients:\ Persistent\ Shocks}")
 xlabel!("Age")
 ylabel!(L"\mathsf{Insurance\ Coefficient}\ \phi^{\eta}")
 plot!(legend = :topleft,             
@@ -553,4 +554,4 @@ plot!(legend = :topleft,
       legendfont = font(7),
       titlefont  = font(12), 
       size       = (400, 500)) 
-savefig("CFS_Project/Figures/Project_Image_04.png") 
+savefig("CFS_Project/Figures/KV_Persistent_Image_04.png") 

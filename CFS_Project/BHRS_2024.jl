@@ -11,6 +11,7 @@
 using Parameters, Plots, Random, LinearAlgebra, Statistics, LaTeXStrings, Distributions
 
 include("Tauchen_1986_Grid.jl")
+include("Tauchen_1986_Drift.jl")
 
 #= ################################################################################################## 
     Parameters
@@ -33,8 +34,14 @@ include("Tauchen_1986_Grid.jl")
     # Employment/Unemployment
     ne::Int64       = 2
     e_grid::Vector{Float64} = [1, 2]
-    δ::Matrix{Float64} = [0.95 0.05; 0.50 0.50]     # Employment/Unemployment transition matrix
-
+    # δ::Matrix{Float64} = [0.95 0.05; 0.50 0.50]     # Employment/Unemployment transition matrix
+    # P_monthly = [0.985 0.015;
+    #          0.2347 0.7653]
+    # P_annual = P_monthly^12
+    δ::Matrix{Float64} = [0.94184   0.058160;
+                          0.910011  0.0899890]
+    # δ::Matrix{Float64} = [0.8336 0.1664; 0.9395 0.0605] # Employment/Unemployment transition matrix
+    
     # Income process
     ρ::Float64      = 0.97                          # Correlation in the persistent component of income
 
@@ -86,7 +93,8 @@ function Initialize_Model()
     c_policy            = zeros(T, na, nζ, nϵ, ne)              # Consumption function
 
     ζ_grid, T_ζE        = tauchen(nζ, ρ, σ_ζE)                  # Discretization of Permanent shocks: Employment   [ζE]
-    ζ_grid, T_ζU        = tauchen(nζ, ρ, σ_ζU, grid = ζ_grid)   # Discretization of Permanent shocks: Unemployment [ζU]
+    # ζ_grid, T_ζU       = tauchen(nζ, ρ, σ_ζU, grid = ζ_grid)   # Discretization of Permanent shocks: Unemployment [ζU]
+    ζ_grid, T_ζU        = tauchen_drift(nζ, ρ, σ_ζU, B = B_N, grid = ζ_grid)   # Discretization of Permanent shocks: Unemployment [ζU] DRIFT
     ϵ_grid, T_ϵ         = tauchen(nϵ, 0.0, σ_ϵ)                 # Discretization of Transitory shocks [ϵ]
     T_ϵ                 = T_ϵ[1,:]
     
@@ -625,7 +633,8 @@ savefig("CFS_Project/Figures/Project_Image_BHRS_02.png")
 # Compute mean over S
 mean_Labor_income = vec(mean(Income, dims=1))/1000
 mean_Consumption  = vec(mean(Consumption,  dims=1))/1000
-mean_Wealth       = vec(mean(Assets,  dims=1))/1000
+# mean_Wealth       = vec(mean(Assets,  dims=1))/1000
+mean_Wealth       = vcat(0.0, vec(mean(Assets,  dims=1))[1:end-1]/1000)
 
 # Figure 3A: Income, Consumption and Wealth 
 plot(age_grid_full, mean_Consumption, title = "Dynamics over the Life Cycles", ylabel = "(\$1000)", 
@@ -636,16 +645,16 @@ plot!(age_grid_full, mean_Wealth, title = "Dynamics over the Life Cycles", ylabe
 label = "Wealth" , xlabel = "Age")
 plot!(
     legend = :topright,
-    xlims = (25, 90),
+    xlims = (25, 95),
     ylims = (0, 750),
-    xticks = 25:5:90,
+    xticks = 25:5:95,
     yticks = 0:50:750,
     xtickfont  = font(9),
     ytickfont  = font(9),
     guidefont  = font(11),
     legendfont = font(7),
     size       = (400, 500))     
-savefig("CFS_Project/Figures/Project_Image_BHRS_01.png") 
+savefig("CFS_Project/Figures_PPT/BHRS_Dynamics_Image_01.png") 
 
 #####################################################################################################
 
@@ -664,7 +673,7 @@ plot!(legend = :bottomright,
       legendfont = font(7),
       titlefont  = font(12), 
       size       = (400, 500))     
-savefig("CFS_Project/Figures/Project_Image_BHRS_03.png") 
+savefig("CFS_Project/Figures_PPT/BHRS_Transitory_Image_03.png") 
 
 # Age profiles of insurance coefficients: Permanent shocks
 plot(age_grid_short[2:TR-1], Vector_α_ζE,
@@ -675,7 +684,7 @@ plot(age_grid_short[2:TR-1], Vector_α_ζE,
 #      label      = "Model TRUE: Unemployed",
 #      lw         = 2,                  
 #      color      = :red)
-title!(L"\mathsf{Insurance\ Coefficients:\ Permanent\ Shocks}")
+title!(L"\mathsf{Insurance\ Coefficients:\ Persistent\ Shocks}")
 xlabel!("Age")
 ylabel!(L"\mathsf{Insurance\ Coefficient}\ \phi^{\eta}")
 plot!(legend = :topleft,             
@@ -685,4 +694,4 @@ plot!(legend = :topleft,
       legendfont = font(7),
       titlefont  = font(12), 
       size       = (400, 500)) 
-savefig("CFS_Project/Figures/Project_Image_BHRS_04.png") 
+savefig("CFS_Project/Figures_PPT/BHRS_Persistent_Image_04.png") 

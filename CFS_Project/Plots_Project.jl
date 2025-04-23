@@ -15,8 +15,8 @@ using Parameters, Plots, Random, LinearAlgebra, Statistics, LaTeXStrings, Distri
 =# ##################################################################################################
 
 # Saving data
-serialize("CFS_Project/20250419_KV_T.jls", Vector_α_ϵ[1:TR-2])                  
-serialize("CFS_Project/20250419_KV_P.jls", Vector_α_ζ[1:TR-2])         
+serialize("CFS_Project/Figures_PPT/20250420_KV_T.jls", Vector_α_ϵ[1:TR-2])                  
+serialize("CFS_Project/Figures_PPT/20250420_KV_P.jls", Vector_α_ζ[1:TR-2])         
 
 serialize("CFS_Project/20250419_BHRS_T.jls", Vector_α_ϵ)                  
 serialize("CFS_Project/20250419_BHRS_P.jls", Vector_α_ζE)              
@@ -42,17 +42,17 @@ plot!(age_grid_short[2:TR-1], BHRS_α_ϵ,
      label      = "BHRS",
      lw         = 2,                  
      color      = :blue)
-title!(L"\mathsf{Insurance\ Coefficients:\ Transitory\ Shocks}")
+# title!(L"\mathsf{Insurance\ Coefficients:\ Transitory\ Shocks}")
 xlabel!("Age")
 ylabel!(L"\mathsf{Insurance\ Coefficient}\ \phi^{\varepsilon}")
 plot!(legend = :bottomright,             
-      xtickfont  = font(9),
-      ytickfont  = font(9),
-      guidefont  = font(11),
-      legendfont = font(7),
+      xtickfont  = font(12),
+      ytickfont  = font(12),
+      guidefont  = font(14),
+      legendfont = font(14),
       titlefont  = font(12), 
-      size       = (400, 500))     
-savefig("CFS_Project/Figures/Project_Image_05.png") 
+      size       = (700, 500))     
+savefig("CFS_Project/Figures_PPT/Transitory_Both.png") 
 
 # Age profiles of insurance coefficients: Permanent shocks
 plot(age_grid_short[2:TR-1], KV_α_ζ,
@@ -63,17 +63,17 @@ plot!(age_grid_short[2:TR-1], BHRS_α_ζ,
      label      = "BHRS",
      lw         = 2,                  
      color      = :blue)
-title!(L"\mathsf{Insurance\ Coefficients:\ Persistent\ Shocks}")
+# title!(L"\mathsf{Insurance\ Coefficients:\ Persistent\ Shocks}")
 xlabel!("Age")
 ylabel!(L"\mathsf{Insurance\ Coefficient}\ \phi^{\eta}")
 plot!(legend = :topleft,             
-      xtickfont  = font(9),
-      ytickfont  = font(9),
-      guidefont  = font(11),
-      legendfont = font(7),
+      xtickfont  = font(12),
+      ytickfont  = font(12),
+      guidefont  = font(14),
+      legendfont = font(14),
       titlefont  = font(12), 
-      size       = (400, 500)) 
-savefig("CFS_Project/Figures/Project_Image_06.png") 
+      size       = (700, 500))   
+savefig("CFS_Project/Figures_PPT/Persistent_Both.png") 
 
 #= ################################################################################################## 
     

@@ -201,7 +201,7 @@ plot!(legend=:bottomright)
 # xlabel!("Human Capital")
 # ylabel!("Reservation Wage")
 # plot!(legend=:bottomleft)
-# savefig("Homework Two/Output/PS2_Image_02.png") 
+# savefig("Homework Two/Image.png") 
 
 # Reservation Wage 
 human_capital = [1.0, 1.25, 1.50, 2.0]

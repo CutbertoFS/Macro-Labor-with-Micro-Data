@@ -122,13 +122,13 @@ gen in_sample = .
 
 * Set in_sample = 1 for males 30 < age if
 * 1) The household head is working (working_status == 1) 
-* 2) Working hours are satisfy: 520 < h < 5820
+* 2) Working hours satisfy: 520 < h < 5820
 * 3) Earn at least $1500 in 1968 dollars
 replace in_sample = 1 if 30 < age & working_status == 1 & (520 <= workings_hours <= 5820) & 1500 <= hh_income
 
 * Set in_sample = 1 for males age <= 30 of
 * 1) The household head is working (working_status == 1) 
-* 2) Working hours are satisfy: 260 < h < 5820
+* 2) Working hours satisfy: 260 < h < 5820
 * 3) Earn at least $1000 in 1968 dollars
 replace in_sample = 1 if age <= 30 & working_status == 1 & (260 <= workings_hours <= 5820) & 1000 <= hh_income
 
