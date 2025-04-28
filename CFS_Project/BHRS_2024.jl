@@ -3,12 +3,12 @@
     Econ 810: Spring 2025 Advanced Macroeconomics 
     Final Project: Unemployment risk in a Life-cycle Bewely economy
 
-    Last Edit:  April 19, 2025
+    Last Edit:  April 27, 2025
     Authors:    Cutberto Frias Sarraf
 
 =# ##################################################################################################
 
-using Parameters, Plots, Random, LinearAlgebra, Statistics, LaTeXStrings, Distributions
+using Parameters, Plots, Random, LinearAlgebra, Statistics, LaTeXStrings, Distributions, Serialization
 
 include("Tauchen_1986_Grid.jl")
 include("Tauchen_1986_Drift.jl")
@@ -22,33 +22,21 @@ include("Tauchen_1986_Drift.jl")
     T::Int64        = 70                            # Life-cycle 35 Working years
     TR::Int64       = 36                            # Life-cycle 35 Retirement years
     r::Float64      = 0.03                          # Interest rate  
-    β::Float64      = 0.975                         # Discount rate  
+    β::Float64      = 0.94                          # Discount rate  
     γ::Float64      = 2.0                           # Coefficient of Relative Risk Aversion 
 
     # Assets Grid
     a_min::Float64  = 0.1                           # Minimum value of assets
-    a_max::Float64  = 1500000                       # Maximum value of assets
-    na::Int64       = 5000                          # Grid points for assets
+    a_max::Float64  = 3000000                       # Maximum value of assets
+    na::Int64       = 10000                         # Grid points for assets
     a_grid::Vector{Float64} = exp.(collect(range(log(a_min), length = na, stop = log(a_max))))   
 
-    # Employment/Unemployment
-    ne::Int64       = 2
-    e_grid::Vector{Float64} = [1, 2]
-    # δ::Matrix{Float64} = [0.95 0.05; 0.50 0.50]     # Employment/Unemployment transition matrix
-    # P_monthly = [0.985 0.015;
-    #          0.2347 0.7653]
-    # P_annual = P_monthly^12
-    δ::Matrix{Float64} = [0.94184   0.058160;
-                          0.910011  0.0899890]
-    # δ::Matrix{Float64} = [0.8336 0.1664; 0.9395 0.0605] # Employment/Unemployment transition matrix
-    
     # Income process
-    ρ::Float64      = 0.97                          # Correlation in the persistent component of income
-
+    ρ::Float64      = 0.93                          # Correlation in the persistent component of income
     nζ::Int64       = 21                            # Grid points for the permanent component
     σ_ζE::Float64   = sqrt(0.08)                    # Standard deviation of the permanent shock in Employment
     σ_ζU::Float64   = sqrt(0.33)                    # Standard deviation of the permanent shock in Unemployment
-    B_N::Float64    = -0.18                         # Drift of persistent component while Unemployed
+    B_N::Float64    = -0.20                         # Drift of persistent component while Unemployed
     
     nϵ::Int64       = 11                            # Grid points for the transitory component
     σ_ϵ::Float64    = sqrt(0.04)                    # Standard deviation of the transitory shock
@@ -63,6 +51,20 @@ include("Tauchen_1986_Drift.jl")
     10.61725912807620, 10.60201099108720, 10.58990416581600, 10.55571432462690, 10.54753392025080,
     10.53038700787840, 10.51112990486990, 10.50177243660240, 10.49346004128460, 10.48778926452950
     ]
+
+    # Employment/Unemployment
+    ne::Int64       = 2
+    e_grid::Vector{Float64} = [1, 2]
+
+    π_u::Float64    = 0.0608                        # Unconditional probability U
+    π_UE::Float64   = 1/(18.5/(52/12))              # Monthly Probability state U to state E
+    π_EU::Float64   = (π_u/(1-π_u))*π_UE            # Monthly Probability state E to state U
+    π_EE::Float64   = 1 - π_EU                      # Monthly Probability state E to state E
+    π_UU::Float64   = 1 - π_UE                      # Monthly Probability state U to state U
+
+    δ_M::Matrix{Float64} = [π_EE π_EU;              # Monthly Employment/Unemployment transition matrix
+                            π_UE π_UU]
+    δ::Matrix{Float64} = δ_M^12                     # Annual Employment/Unemployment transition matrix
 
 end 
 
@@ -304,9 +306,9 @@ Solve_Problem(param, results, other_param)
 
 # using Serialization  # Import the module
 # # Saving data
-# serialize("CFS_Project/Param_20250419.jls", param)                  # Save the 'prim' variable
-# serialize("CFS_Project/Results_20250419.jls", results)              # Save the 'res' variable
-# serialize("CFS_Project/OtherParam_20250419.jls", other_param)       # Save the 'prim' variable
+# serialize("CFS_Project/Figures_PPT_New/Param_20250427_BHRS.jls", param)                  # Save the 'prim' variable
+# serialize("CFS_Project/Figures_PPT_New/Results_20250427_BHRS.jls", results)              # Save the 'res' variable
+# serialize("CFS_Project/Figures_PPT_New/OtherParam_20250427_BHRS.jls", other_param)       # Save the 'prim' variable
 
 # # Loading data
 # param      = deserialize("CFS_Project/Param_20250419.jls")         # Load the 'prim' variable
@@ -327,7 +329,7 @@ function simulate_model(param, results, other_param, S::Int64)
     @unpack_OtherPrimitives other_param
 
     # [1] Distribution over initial Employment Status
-    Initial_dist_E      = Categorical([0.909,0.091])
+    Initial_dist_E      = Categorical([1 - π_u, π_u])
     Employment_dist     = Categorical(δ[1,:])
     Unemployment_dist   = Categorical(δ[2,:])
 
@@ -637,24 +639,24 @@ mean_Consumption  = vec(mean(Consumption,  dims=1))/1000
 mean_Wealth       = vcat(0.0, vec(mean(Assets,  dims=1))[1:end-1]/1000)
 
 # Figure 3A: Income, Consumption and Wealth 
-plot(age_grid_full, mean_Consumption, title = "Dynamics over the Life Cycles", ylabel = "(\$1000)", 
+plot(age_grid_full, mean_Consumption, title = "Dynamics over the Life Cycle", ylabel = "(\$1000)", 
     label = "Consumption" , xlabel = "Age")
-plot!(age_grid_full, mean_Labor_income, title = "Dynamics over the Life Cycles", ylabel = "(\$1000)", 
+plot!(age_grid_full, mean_Labor_income, title = "Dynamics over the Life Cycle", ylabel = "(\$1000)", 
 label = "Net Income" , xlabel = "Age")
-plot!(age_grid_full, mean_Wealth, title = "Dynamics over the Life Cycles", ylabel = "(\$1000)", 
+plot!(age_grid_full, mean_Wealth, title = "Dynamics over the Life Cycle", ylabel = "(\$1000)", 
 label = "Wealth" , xlabel = "Age")
 plot!(
     legend = :topright,
     xlims = (25, 95),
-    ylims = (0, 750),
+    ylims = (0, 600),
     xticks = 25:5:95,
-    yticks = 0:50:750,
+    yticks = 0:50:600,
     xtickfont  = font(9),
     ytickfont  = font(9),
     guidefont  = font(11),
     legendfont = font(7),
     size       = (400, 500))     
-savefig("CFS_Project/Figures_PPT/BHRS_Dynamics_Image_01.png") 
+savefig("CFS_Project/Figures_PPT_New/BHRS_Dynamics_Image_01.png") 
 
 #####################################################################################################
 

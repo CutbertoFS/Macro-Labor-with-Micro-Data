@@ -3,12 +3,12 @@
     Econ 810: Spring 2025 Advanced Macroeconomics 
     Final Project: Unemployment risk in a Life-cycle Bewely economy
 
-    Last Edit:  April 17, 2025
+    Last Edit:  April 27, 2025
     Authors:    Cutberto Frias Sarraf
 
 =# ##################################################################################################
 
-using Parameters, Plots, Random, LinearAlgebra, Statistics, LaTeXStrings, Distributions
+using Parameters, Plots, Random, LinearAlgebra, Statistics, LaTeXStrings, Distributions, Serialization
 
 # include("Tauchen_Hussey_1991.jl")
 include("Tauchen_1986_Grid.jl")
@@ -22,22 +22,22 @@ include("Tauchen_1986_Grid.jl")
     T::Int64        = 70                            # Life-cycle 35 Working years
     TR::Int64       = 36                            # Life-cycle 35 Retirement years
     r::Float64      = 0.03                          # Interest rate  
-    β::Float64      = 0.975                         # Discount rate  
+    β::Float64      = 0.94                          # Discount rate  
     γ::Float64      = 2.0                           # Coefficient of Relative Risk Aversion 
 
     # Assets Grid
     a_min::Float64  = 0.1                           # Minimum value of assets
-    a_max::Float64  = 1500000                       # Maximum value of assets
-    na::Int64       = 5000                          # Grid points for assets
+    a_max::Float64  = 3000000                       # Maximum value of assets
+    na::Int64       = 10000                         # Grid points for assets
     a_grid::Vector{Float64} = exp.(collect(range(log(a_min), length = na, stop = log(a_max))))   
 
     # Income process
-    ρ::Float64      = 0.97                          # Correlation in the persistent component of income 
+    ρ::Float64      = 0.93                          # Correlation in the persistent component of income 
     nζ::Int64       = 21                            # Grid points for the permanent component
-    σ_ζ::Float64    = sqrt(0.01)                    # Standard deviation of the permanent shock
+    σ_ζ::Float64    = sqrt(0.095) #sqrt(0.01) #     # Standard deviation of the permanent shock
 
     nϵ::Int64       = 11                            # Grid points for the transitory component
-    σ_ϵ::Float64    = sqrt(0.04) # sqrt(0.05)                    # Standard deviation of the transitory shock
+    σ_ϵ::Float64    = sqrt(0.04) # sqrt(0.05)       # Standard deviation of the transitory shock
 
     κ::Vector{Float64} = [                          # Deterministic age profile for log-income
     10.00571682417030, 10.06468173213630, 10.14963371320800, 10.18916005760660, 10.25289993933830,
@@ -179,7 +179,7 @@ function Solve_Problem(param::Primitives, results::Results, other_param::OtherPr
             end
         end
     
-        Threads.@threads for ζ_index in 1:nζ                   # State: Permanent shock ζ 
+        Threads.@threads for ζ_index in 1:nζ                    # State: Permanent shock ζ 
             ζ = ζ_grid[ζ_index]
                 
             for ϵ_index in 1:nϵ                                 # State: Transitory shock ϵ
@@ -238,9 +238,13 @@ Solve_Problem(param, results, other_param)
 
 # using Serialization  # Import the module
 # # Saving data
-# serialize("CFS_Project/Param_20250419.jls", param)                  # Save the 'prim' variable
-# serialize("CFS_Project/Results_20250419.jls", results)              # Save the 'res' variable
-# serialize("CFS_Project/OtherParam_20250419.jls", other_param)       # Save the 'prim' variable
+# serialize("CFS_Project/Figures_PPT_New/Param_20250427_KV.jls", param)                  # Save the 'prim' variable
+# serialize("CFS_Project/Figures_PPT_New/Results_20250427_KV.jls", results)              # Save the 'res' variable
+# serialize("CFS_Project/Figures_PPT_New/OtherParam_20250427_KV.jls", other_param)       # Save the 'prim' variable
+
+# serialize("CFS_Project/Figures_PPT_New/Param_20250427_KV_Alt.jls", param)                  # Save the 'prim' variable
+# serialize("CFS_Project/Figures_PPT_New/Results_20250427_KV_Alt.jls", results)              # Save the 'res' variable
+# serialize("CFS_Project/Figures_PPT_New/OtherParam_20250427_KV_Alt.jls", other_param)       # Save the 'prim' variable
 
 # # Loading data
 # param      = deserialize("CFS_Project/Param_20250419.jls")         # Load the 'prim' variable
@@ -493,7 +497,7 @@ histogram(vec(Assets)/1000,
     linecolor  = :black,    # Optional: border of each bar
     normalize  = :probability,
     size       = (400, 500))
-savefig("CFS_Project/Figures/Project_Image_02.png") 
+# savefig("CFS_Project/Figures/Project_Image_02.png") 
 
 # Compute mean over S
 mean_Labor_income = vec(mean(Income, dims=1))/1000
@@ -501,24 +505,24 @@ mean_Consumption  = vec(mean(Consumption,  dims=1))/1000
 mean_Wealth       = vcat(0.0, vec(mean(Assets,  dims=1))[1:end-1]/1000)
 
 # Figure 3A: Income, Consumption and Wealth 
-plot(age_grid_full, mean_Consumption, title = "Dynamics over the Life Cycles", ylabel = "(\$1000)", 
+plot(age_grid_full, mean_Consumption, title = "Dynamics over the Life Cycle", ylabel = "(\$1000)", 
     label = "Consumption" , xlabel = "Age")
-plot!(age_grid_full, mean_Labor_income, title = "Dynamics over the Life Cycles", ylabel = "(\$1000)", 
+plot!(age_grid_full, mean_Labor_income, title = "Dynamics over the Life Cycle", ylabel = "(\$1000)", 
 label = "Net Income" , xlabel = "Age")
-plot!(age_grid_full, mean_Wealth, title = "Dynamics over the Life Cycles", ylabel = "(\$1000)", 
+plot!(age_grid_full, mean_Wealth, title = "Dynamics over the Life Cycle", ylabel = "(\$1000)", 
 label = "Wealth" , xlabel = "Age")
 plot!(
     legend = :topright,
     xlims = (25, 94),
-    ylims = (0, 500),
+    ylims = (0, 600),
     xticks = 25:5:94,
-    yticks = 0:50:500,
+    yticks = 0:50:600,
     xtickfont  = font(9),
     ytickfont  = font(9),
     guidefont  = font(11),
     legendfont = font(7),
     size       = (400, 500))     
-savefig("CFS_Project/Figures_PPT/KV_Additional_Image_01.png") 
+savefig("CFS_Project/Figures_PPT_New/KV_Dynamics_Image_01.png") 
 
 #####################################################################################################
 
@@ -537,7 +541,7 @@ plot!(legend = :bottomright,
       legendfont = font(7),
       titlefont  = font(12), 
       size       = (400, 500))     
-savefig("CFS_Project/Figures/KV_Transitory_Image_03.png") 
+savefig("CFS_Project/Figures_PPT_New/KV_Transitory_Image_03.png") 
 
 # Age profiles of insurance coefficients: Permanent shocks
 plot(age_grid_short[2:TR-1], Vector_α_ζ[1:TR-2],
@@ -554,4 +558,4 @@ plot!(legend = :topleft,
       legendfont = font(7),
       titlefont  = font(12), 
       size       = (400, 500)) 
-savefig("CFS_Project/Figures/KV_Persistent_Image_04.png") 
+savefig("CFS_Project/Figures_PPT_New/KV_Persistent_Image_04.png") 

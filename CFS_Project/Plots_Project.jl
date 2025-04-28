@@ -15,17 +15,31 @@ using Parameters, Plots, Random, LinearAlgebra, Statistics, LaTeXStrings, Distri
 =# ##################################################################################################
 
 # Saving data
-serialize("CFS_Project/Figures_PPT/20250420_KV_T.jls", Vector_α_ϵ[1:TR-2])                  
-serialize("CFS_Project/Figures_PPT/20250420_KV_P.jls", Vector_α_ζ[1:TR-2])         
 
-serialize("CFS_Project/20250419_BHRS_T.jls", Vector_α_ϵ)                  
-serialize("CFS_Project/20250419_BHRS_P.jls", Vector_α_ζE)              
+# KV, NOT GREAT RESULTS: σ_ζ::Float64  = sqrt(0.095)
+serialize("CFS_Project/Figures_PPT_New/20250427_KV_T.jls", Vector_α_ϵ[1:TR-2])                  
+serialize("CFS_Project/Figures_PPT_New/20250427_KV_P.jls", Vector_α_ζ[1:TR-2])         
 
-# Loading data
-KV_α_ϵ      = deserialize("CFS_Project/20250419_KV_T.jls")         
-KV_α_ζ      = deserialize("CFS_Project/20250419_KV_P.jls")  
-BHRS_α_ϵ    = deserialize("CFS_Project/20250419_BHRS_T.jls")         
-BHRS_α_ζ    = deserialize("CFS_Project/20250419_BHRS_P.jls")  
+# KV, NICE RESULTS: σ_ζ::Float64       = sqrt(0.01)
+serialize("CFS_Project/Figures_PPT_New/20250427_KV_T_Alt.jls", Vector_α_ϵ[1:TR-2])                  
+serialize("CFS_Project/Figures_PPT_New/20250427_KV_P_Alt.jls", Vector_α_ζ[1:TR-2])  
+
+# BHRS
+serialize("CFS_Project/Figures_PPT_New/20250427_BHRS_T.jls", Vector_α_ϵ)                  
+serialize("CFS_Project/Figures_PPT_New/20250427_BHRS_P.jls", Vector_α_ζE)     
+
+
+# Loading data: Option 1
+KV_α_ϵ      = deserialize("CFS_Project/Figures_PPT_New/20250427_KV_T_Alt.jls")         
+KV_α_ζ      = deserialize("CFS_Project/Figures_PPT_New/20250427_KV_P_Alt.jls")  
+BHRS_α_ϵ    = deserialize("CFS_Project/Figures_PPT_New/20250427_BHRS_T.jls")         
+BHRS_α_ζ    = deserialize("CFS_Project/Figures_PPT_New/20250427_BHRS_P.jls")  
+
+# Loading data: Option 2
+KV_α_ϵ      = deserialize("CFS_Project/Figures_PPT_New/20250427_KV_T.jls")         
+KV_α_ζ      = deserialize("CFS_Project/Figures_PPT_New/20250427_KV_P.jls")  
+BHRS_α_ϵ    = deserialize("CFS_Project/Figures_PPT_New/20250427_BHRS_T.jls")         
+BHRS_α_ζ    = deserialize("CFS_Project/Figures_PPT_New/20250427_BHRS_P.jls")  
 
 #= ################################################################################################## 
     Plots
@@ -52,7 +66,7 @@ plot!(legend = :bottomright,
       legendfont = font(14),
       titlefont  = font(12), 
       size       = (700, 500))     
-savefig("CFS_Project/Figures_PPT/Transitory_Both.png") 
+savefig("CFS_Project/Figures_PPT_New/Transitory_Both_Alt.png") 
 
 # Age profiles of insurance coefficients: Permanent shocks
 plot(age_grid_short[2:TR-1], KV_α_ζ,
@@ -73,7 +87,7 @@ plot!(legend = :topleft,
       legendfont = font(14),
       titlefont  = font(12), 
       size       = (700, 500))   
-savefig("CFS_Project/Figures_PPT/Persistent_Both.png") 
+savefig("CFS_Project/Figures_PPT_New/Persistent_Both_Alt.png") 
 
 #= ################################################################################################## 
     
